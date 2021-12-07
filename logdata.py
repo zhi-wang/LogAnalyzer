@@ -27,6 +27,7 @@ class _Property:
     density = (21<<1) | is_array
     temperature = (22<<1) | is_array
 
+
 class Property(IntEnum):
     nframe = _Property.nframe
     mass = _Property.mass
@@ -76,7 +77,7 @@ class StaticMethod:
 class LogData:
     def __init__(self, mass=0.0, dof=0.0, file='', dir=''):
         path = os.path.join(os.path.expanduser(dir), file)
-        self._rawFile = [line.strip() for line in open(path)]
+        self._rawFile = [line.rstrip() for line in open(path)]
         self._path = path
 
         self._time, self._potential, self._kinetic = [], [], []
@@ -171,3 +172,28 @@ class LogData:
         else:
             mean = array
         return mean, std
+
+    def brief(self) -> str:
+        out = '{}'.format(self.get(Property.path))
+        fmt0 = '\n{:20s}{}'
+        fmtd = '\n{:20s}{:12d}'
+        fmt1 = '\n{:20s}{:12.3f}'
+        fmt2 = '\n{:20s}{:12.3f}{:12.3f}'
+        for p in Property:
+            if p == Property.path:
+                continue
+            name = p.name
+            avg, std = self.mean(p)
+            if std is None:
+                if isinstance(avg, float):
+                    out = out + fmt1.format(name, avg)
+                elif isinstance(avg, int):
+                    out = out + fmtd.format(name, avg)
+                else:
+                    out = out + fmt0.format(name, avg)
+            else:
+                out = out + fmt2.format(name, avg, std)
+        return out
+
+    def __str__(self) -> str:
+        return self.brief()
