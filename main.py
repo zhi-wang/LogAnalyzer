@@ -13,8 +13,11 @@ if __name__ == '__main__':
         argv.append(r.rstrip())
     file, directory = '', ''
     mass, dof = 0.0, 0.0
+    ndiscard = 0
     if file == '':
         file = argv[1]
         mass, dof = float(argv[2]), float(argv[3])
+        ndiscard = int(argv[4])
     d = LogData(mass=mass, dof=dof, file=file, dir=directory)
+    d.discard(ndiscard)
     print(d)
