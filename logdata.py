@@ -180,7 +180,7 @@ class LogData:
         fmt1 = '\n{:20s}{:12.3f}'
         fmt2 = '\n{:20s}{:12.3f}{:12.3f}'
         for p in Property:
-            if p == Property.path:
+            if p in [Property.path, Property.time]:
                 continue
             name = p.name
             avg, std = self.mean(p)
