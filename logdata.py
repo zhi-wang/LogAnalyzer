@@ -1,53 +1,22 @@
-from enum import IntEnum
 from math import pi, cos, sin, sqrt
+from matplotlib.pyplot import step
 import numpy as np
 import os
 
 
-class _Property:
-    is_array = 0x0001
-
-    nframe = (1<<1)
-    mass = (2<<1)
-    dof = (3<<1)
-    path = (4<<1)
-    performance = (5<<1)
-
-    time = (11<<1) | is_array
-    potential = (12<<1) | is_array
-    kinetic = (13<<1) | is_array
-    xbox = (14<<1) | is_array
-    ybox = (15<<1) | is_array
-    zbox = (16<<1) | is_array
-    alpha = (17<<1) | is_array
-    beta = (18<<1) | is_array
-    gamma = (19<<1) | is_array
-
-    volume = (20<<1) | is_array
-    density = (21<<1) | is_array
-    temperature = (22<<1) | is_array
-
-
-class Property(IntEnum):
-    nframe = _Property.nframe
-    mass = _Property.mass
-    dof = _Property.dof
-    path = _Property.path
-    performance = _Property.performance
-
-    time = _Property.time
-    potential = _Property.potential
-    kinetic = _Property.kinetic
-    xbox = _Property.xbox
-    ybox = _Property.ybox
-    zbox = _Property.zbox
-    alpha = _Property.alpha
-    beta = _Property.beta
-    gamma = _Property.gamma
-
-    volume = _Property.volume
-    density = _Property.density
-    temperature = _Property.temperature
+def getHist(array, bins=40, density=True, half=False):
+    a0 = array
+    if half:
+        a0 = []
+        for a in array:
+            a0.append(a)
+            a0.append(-a)
+    h, edges = np.histogram(a0, bins=bins, density=density)
+    l = len(h)
+    edg0 = []
+    for i in range(l):
+        edg0.append(0.5*(edges[i]+edges[i+1]))
+    return h, np.array(edg0)
 
 
 class Constant:
@@ -74,125 +43,269 @@ class StaticMethod:
         return temper
 
 
-class LogData:
-    def __init__(self, mass=0.0, dof=0.0, file='', dir=''):
+class GLogData:
+    def __init__(self, mass, dof, moldof, file, dir):
         path = os.path.join(os.path.expanduser(dir), file)
-        self._rawFile = [line.rstrip() for line in open(path)]
-        self._path = path
+        self.rawFile = [line.rstrip() for line in open(path)]
+        self.path = path
 
-        self._time, self._potential, self._kinetic = [], [], []
-        self._xbox, self._ybox, self._zbox = [], [], []
-        self._alpha, self._beta, self._gamma = [], [], []
-        self._performance = 0.0
-        for line in self._rawFile:
+        self.list0 = ['nframe', 'dof', 'moldof', 'performance', 'mass']
+        self.performance = 0.0
+        self.nframe = 0
+        self.mass = mass
+        self.dof = dof
+        self.moldof = moldof
+
+    def fmtstr(self, p) -> str:
+        shared = '\n{:20s}{:12.3f}'
+        blank = '            '
+        if p == 'performance':
+            return shared + blank + ' ns/day'
+        elif p == 'mass':
+            return shared + blank + ' a.u.'
+        elif p == 'nframe':
+            return '\n{:20s}{:12d}'
+        elif p == 'dof' or p == 'moldof':
+            return '\n{:20s}{:12d}'
+        else:
+            return shared
+
+    def brief(self) -> str:
+        out = '{}'.format(self.path)
+        for k in self.list0:
+            foo = getattr(self, k)
+            if foo != 0:
+                out = out + self.fmtstr(k).format(k, getattr(self, k))
+        return out
+
+
+class ALogData:
+    def __init__(self):
+        self.list1 = ['time', 'potential', 'kinetic',
+            'xbox', 'ybox', 'zbox', 'alpha', 'beta', 'gamma']
+        self.list2 = ['volume', 'density', 'temperature']
+        self.list3 = ['pressure', 'stress']
+        self.list0 = self.list1 + self.list2 + self.list3
+        for k in self.list0:
+            setattr(self, k, [])
+
+    def keep(self, start: int, stop: int, step: int):
+        for k in self.list1 + self.list2:
+            p = getattr(self, k)
+            if len(p):
+                setattr(self, k, np.array(p[start:stop:step]))
+
+    def keep2(self, start: int, stop: int, step: int):
+        for k in self.list3:
+            p = getattr(self, k)
+            lenp = len(p)
+            if stop == -1:
+                stop2 = lenp
+            else:
+                stop2 = stop
+            if lenp:
+                setattr(self, k, np.array(p[start:stop2:step]))
+
+    def fmtstr(self, p) -> str:
+        shared = '\n{:20s}{:12.3f}{:12.3f}'
+        if p == 'potential':
+            return shared + ' kcal/mol'
+        elif p == 'temperature':
+            return shared + ' Kelvin'
+        else:
+            return shared
+
+    def brief(self) -> str:
+        out = ''
+        len1 = len(self.potential)
+        out = out + '\n{:20s}{:12d}'.format('ndata', len1)
+        for k in self.list0:
+            if k == 'time':
+                continue
+
+            foo = getattr(self, k)
+            if len(foo) == 0:
+                continue
+            elif k == 'stress':
+                avg, std = foo.mean(axis=0), foo.std(axis=0)
+                fmt = '\n{:20s}{:12.3f}{:12.3f}{:12.3f}'
+                out = out + '\n'
+                out = out + fmt.format('stress-x', avg[0], avg[1], avg[2])
+                out = out + fmt.format('stress-y', avg[3], avg[4], avg[5])
+                out = out + fmt.format('stress-z', avg[6], avg[7], avg[8])
+                out = out + fmt.format('stress-std-x', std[0], std[1], std[2])
+                out = out + fmt.format('stress-std-y', std[3], std[4], std[5])
+                out = out + fmt.format('stress-std-z', std[6], std[7], std[8])
+            else:
+                avg, std = foo.mean(), foo.std()
+                out = out + self.fmtstr(k).format(k, avg, std)
+        return out
+
+    def convert(self, gdata):
+        for i in range(gdata.nframe):
+            a, b, c = self.xbox[i], self.ybox[i], self.zbox[i]
+            alpha, beta, gamma = self.alpha[i], self.beta[i], self.gamma[i]
+            ekin = self.kinetic[i]
+            volume = StaticMethod.volume(a, b, c, alpha, beta, gamma)
+            density = StaticMethod.density(gdata.mass, volume)
+            temper = StaticMethod.temperature(ekin, gdata.dof)
+            self.volume.append(volume)
+            self.density.append(density)
+            self.temperature.append(temper)
+
+        for k in self.list0:
+            setattr(self, k, np.array(getattr(self, k)))
+
+
+class MLogData:
+    def __init__(self):
+        self.list0 = ['molkin', 'molT', 'molP', 'molStress']
+        for k in self.list0:
+            setattr(self, k, [])
+
+    def convert(self, gdata):
+        for i in range(len(self.molkin)):
+            ekin = self.molkin[i]
+            temper = StaticMethod.temperature(ekin, gdata.moldof)
+            self.molT.append(temper)
+
+        for k in self.list0:
+            setattr(self, k, np.array(getattr(self, k)))
+
+    def keep2(self, start: int, stop: int, step: int):
+        for k in self.list0:
+            p = getattr(self, k)
+            lenp = len(p)
+            if stop == -1:
+                stop2 = lenp
+            else:
+                stop2 = stop
+            if lenp:
+                setattr(self, k, np.array(p[start:stop2:step]))
+
+    def brief(self) -> str:
+        out = ''
+        out = '\n{:20s}{:12d}'.format('ndata/mol', len(self.molkin))
+        for k in self.list0:
+            foo = getattr(self, k)
+            if len(foo) == 0:
+                continue
+            elif k == 'molStress':
+                avg, std = foo.mean(axis=0), foo.std(axis=0)
+                fmt = '\n{:20s}{:12.3f}{:12.3f}{:12.3f}'
+                out = out + '\n'
+                out = out + fmt.format('molStress-x', avg[0], avg[1], avg[2])
+                out = out + fmt.format('molStress-y', avg[3], avg[4], avg[5])
+                out = out + fmt.format('molStress-z', avg[6], avg[7], avg[8])
+                out = out + fmt.format('molStress-std-x', std[0], std[1], std[2])
+                out = out + fmt.format('molStress-std-y', std[3], std[4], std[5])
+                out = out + fmt.format('molStress-std-z', std[6], std[7], std[8])
+            else:
+                avg, std = foo.mean(), foo.std()
+                out = out + '\n{:20s}{:12.3f}{:12.3f}'.format(k, avg, std)
+        return out
+
+
+class LogData:
+    def __init__(self, mass=0.0, dof=0, moldof=0, file='', dir='', keep1=[1, -1, 1], keep2=[1, -1, 1]):
+        self.gdata = GLogData(mass, dof, moldof, file, dir)
+        self.adata = ALogData()
+        self.mdata = None if moldof == 0 else MLogData()
+
+        for line in self.gdata.rawFile:
             if 'Current Time ' in line:
                 # ps
                 foo = float(line.split()[2])
-                self._time.append(foo)
+                self.adata.time.append(foo)
             elif 'Current Potential ' in line:
                 # kcal/mol
                 foo = float(line.split()[2])
-                self._potential.append(foo)
+                self.adata.potential.append(foo)
             elif 'Current Kinetic ' in line:
                 # kcal/mol
                 foo = float(line.split()[2])
-                self._kinetic.append(foo)
+                self.adata.kinetic.append(foo)
             elif 'Lattice Lengths ' in line:
                 # angstrom
                 vs = line.split()
-                self._xbox.append(float(vs[2]))
-                self._ybox.append(float(vs[3]))
-                self._zbox.append(float(vs[4]))
+                self.adata.xbox.append(float(vs[2]))
+                self.adata.ybox.append(float(vs[3]))
+                self.adata.zbox.append(float(vs[4]))
             elif 'Lattice Angles ' in line:
                 # degree
                 vs = line.split()
-                self._alpha.append(float(vs[2]))
-                self._beta.append(float(vs[3]))
-                self._gamma.append(float(vs[4]))
+                self.adata.alpha.append(float(vs[2]))
+                self.adata.beta.append(float(vs[3]))
+                self.adata.gamma.append(float(vs[4]))
             elif 'Performance: ' in line:
                 # ns/day
-                self._performance = float(line.split()[2])
+                self.gdata.performance = float(line.split()[2])
+            elif 'Atomic Pressure Atm ' in line:
+                # atm
+                vs = line.split()
+                self.adata.pressure.append(float(vs[3]))
+            elif 'Group Pressure Atm ' in line:
+                # atm
+                vs = line.split()
+                self.mdata.molP.append(float(vs[3]))
+            elif 'Group Kinetic ' in line:
+                # kcal/mol
+                vs = line.split()
+                self.mdata.molkin.append(float(vs[2]))
+            elif 'Atomic Pressure x- Atm ' in line:
+                # atm
+                vs = line.split()
+                self.adata.stress.append([float(vs[4]), float(vs[5]), float(vs[6])])
+            elif 'Atomic Pressure y- Atm ' in line:
+                vs = line.split()
+                self.adata.stress[-1].append(float(vs[4]))
+                self.adata.stress[-1].append(float(vs[5]))
+                self.adata.stress[-1].append(float(vs[6]))
+            elif 'Atomic Pressure z- Atm ' in line:
+                vs = line.split()
+                self.adata.stress[-1].append(float(vs[4]))
+                self.adata.stress[-1].append(float(vs[5]))
+                self.adata.stress[-1].append(float(vs[6]))
+            elif 'Group Pressure x- Atm ' in line:
+                # atm
+                vs = line.split()
+                self.mdata.molStress.append([float(vs[4]), float(vs[5]), float(vs[6])])
+            elif 'Group Pressure y- Atm ' in line:
+                vs = line.split()
+                self.mdata.molStress[-1].append(float(vs[4]))
+                self.mdata.molStress[-1].append(float(vs[5]))
+                self.mdata.molStress[-1].append(float(vs[6]))
+            elif 'Group Pressure z- Atm ' in line:
+                vs = line.split()
+                self.mdata.molStress[-1].append(float(vs[4]))
+                self.mdata.molStress[-1].append(float(vs[5]))
+                self.mdata.molStress[-1].append(float(vs[6]))
 
-        self._nframe = len(self._time)
-        # atomic unit
-        self._mass = float(mass)
-        self._dof = float(dof)
+        self.gdata.nframe = len(self.adata.time)
+        self.adata.convert(self.gdata)
+        if self.mdata:
+            self.mdata.convert(self.gdata)
 
-        self._volume, self._density, self._temperature = [], [], []
-        for i in range(self._nframe):
-            a, b, c = self._xbox[i], self._ybox[i], self._zbox[i]
-            alpha, beta, gamma = self._alpha[i], self._beta[i], self._gamma[i]
-            ekin = self._kinetic[i]
-            volume = StaticMethod.volume(a, b, c, alpha, beta, gamma)
-            density = StaticMethod.density(self._mass, volume)
-            temper = StaticMethod.temperature(ekin, self._dof)
-            self._volume.append(volume)
-            self._density.append(density)
-            self._temperature.append(temper)
-
-        self._properties = {}
-        self.keep()
-
-    def keep(self, start=0, stop=-1, step=1):
-        if stop == -1:
-            stop = self._nframe
-
-        self._properties = {
-            Property.time: np.array(self._time[start:stop:step]),
-            Property.potential: np.array(self._potential[start:stop:step]),
-            Property.kinetic: np.array(self._kinetic[start:stop:step]),
-            Property.xbox : np.array(self._xbox[start:stop:step]),
-            Property.ybox : np.array(self._ybox[start:stop:step]),
-            Property.zbox : np.array(self._zbox[start:stop:step]),
-            Property.alpha : np.array(self._alpha[start:stop:step]),
-            Property.beta : np.array(self._beta[start:stop:step]),
-            Property.gamma : np.array(self._gamma[start:stop:step]),
-
-            Property.volume: np.array(self._volume[start:stop:step]),
-            Property.density: np.array(self._density[start:stop:step]),
-            Property.temperature: np.array(self._temperature[start:stop:step]),
-        }
-        self._properties[Property.nframe] = len(self._properties[Property.time])
-        self._properties[Property.mass] = self._mass
-        self._properties[Property.dof] = self._dof
-        self._properties[Property.path] = self._path
-        self._properties[Property.performance] = self._performance
-
-    def discard(self, first_n=0):
-        self.keep(first_n, -1, 1)
-
-    def get(self, p: Property):
-        return self._properties[p]
-
-    def mean(self, p: Property):
-        array = self.get(p)
-        mean, std = None, None
-        if p & _Property.is_array:
-            mean, std = array.mean(), array.std()
-        else:
-            mean = array
-        return mean, std
+        start1, stop1, step1 = keep1
+        start1 = start1 - 1
+        if stop1 == -1:
+            stop1 = self.gdata.nframe
+        start2, stop2, step2 = keep2
+        start2 = start2 - 1
+        self.adata.keep(start1, stop1, step1)
+        self.adata.keep2(start2, stop2, step2)
+        if self.mdata:
+            self.mdata.keep2(start2, stop2, step2)
 
     def brief(self) -> str:
-        out = '{}'.format(self.get(Property.path))
-        fmt0 = '\n{:20s}{}'
-        fmtd = '\n{:20s}{:12d}'
-        fmt1 = '\n{:20s}{:12.3f}'
-        fmt2 = '\n{:20s}{:12.3f}{:12.3f}'
-        for p in Property:
-            if p in [Property.path, Property.time]:
-                continue
-            name = p.name
-            avg, std = self.mean(p)
-            if std is None:
-                if isinstance(avg, float):
-                    out = out + fmt1.format(name, avg)
-                elif isinstance(avg, int):
-                    out = out + fmtd.format(name, avg)
-                else:
-                    out = out + fmt0.format(name, avg)
-            else:
-                out = out + fmt2.format(name, avg, std)
+        out = ''
+        out = out + self.gdata.brief()
+        out = out + '\n'
+        out = out + self.adata.brief()
+
+        if self.mdata:
+            out = out + '\n'
+            out = out + self.mdata.brief()
         return out
 
     def __str__(self) -> str:

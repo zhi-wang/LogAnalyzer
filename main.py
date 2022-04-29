@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
 
 
-from logdata import LogData, Property
-import sys
+from logdata import LogData
+import argparse
 
 
 if __name__ == '__main__':
-    argv = []
-    for r in sys.argv:
-        argv.append(r)
-    for r in sys.stdin:
-        argv.append(r.rstrip())
-    file, directory = '', ''
-    mass, dof = 0.0, 0.0
-    ndiscard = 0
-    if file == '':
-        file = argv[1]
-        mass, dof = float(argv[2]), float(argv[3])
-        ndiscard = int(argv[4])
-    d = LogData(mass=mass, dof=dof, file=file, dir=directory)
-    d.discard(ndiscard)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--file', type=str, required=True)
+    parser.add_argument('--dir', type=str, required=False)
+    parser.add_argument('--mass', type=float, required=True)
+    parser.add_argument('--dof', type=int, required=True)
+    parser.add_argument('--moldof', type=int, required=False)
+    parser.add_argument('--keep1', type=int, nargs=3, required=False)
+    parser.add_argument('--keep2', type=int, nargs=3, required=False)
+    args = parser.parse_args()
+
+    mass = args.mass
+    dof = args.dof
+    moldof = 0
+    if args.moldof:
+        moldof = args.moldof
+    file = args.file
+    directory = ''
+    if args.dir:
+        directory = args.dir
+    keep1 = [1, -1, 1]
+    if args.keep1:
+        keep1 = args.keep1
+    keep2 = [1, -1, 1]
+    if args.keep2:
+        keep2 = args.keep2
+    d = LogData(mass=mass, dof=dof, moldof=moldof, file=file, dir=directory, keep1=keep1, keep2=keep2)
     print(d)
