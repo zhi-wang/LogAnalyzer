@@ -107,8 +107,16 @@ class ALogData:
 
     def fmtstr(self, p) -> str:
         shared = '\n{:20s}{:12.3f}{:12.3f}'
-        if p == 'potential':
+        if p in ['potential', 'kinetic']:
             return shared + ' kcal/mol'
+        elif p in ['xbox', 'ybox', 'zbox']:
+            return shared + ' angstrom'
+        elif p in ['alpha', 'beta', 'gamma']:
+            return shared + ' degree'
+        elif p in ['volume']:
+            return shared + ' angstrom**3'
+        elif p in ['density']:
+            return shared + ' g/cm**3'
         elif p == 'temperature':
             return shared + ' Kelvin'
         else:
