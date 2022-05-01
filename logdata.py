@@ -1,5 +1,4 @@
 from math import pi, cos, sin, sqrt
-from matplotlib.pyplot import step
 import numpy as np
 import os
 
